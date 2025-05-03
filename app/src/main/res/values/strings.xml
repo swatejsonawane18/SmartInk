@@ -1,0 +1,26 @@
+<resources>
+<string name="app_name">SmartInk Journal</string>
+<string name="toolbar_title">📝 SmartInk Journal</string>
+
+<!-- Toolbar Actions -->
+<string name="undo">Undo</string>
+<string name="redo">Redo</string>
+<string name="erase_all">Erase All</string>
+<string name="save">Save</string>
+<string name="export_pdf">Export PDF</string>
+<string name="close_without_saving">Close without saving</string>
+
+<!-- Canvas -->
+<string name="new_note">New Note</string>
+<string name="no_recognized_text">(No recognized text)</string>
+
+<!-- PDF Export -->
+<string name="recognized_text_label">Recognized Text:</string>
+<string name="timestamp_label">Timestamp: %1$s</string>
+<string name="no_strokes_to_export">No strokes to export.</string>
+<string name="pdf_saved_to">PDF exported to: %1$s</string>
+<string name="pdf_export_failed">Failed to export PDF.</string>
+
+<!-- Notes screen -->
+<string name="search_hint">Search recognized text...</string>
+</resources>
