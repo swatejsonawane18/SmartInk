@@ -1,53 +1,54 @@
-# SmartInk Journal
+# 📝 SmartInk Journal
 
-SmartInk Journal is a handwriting-focused Android journaling app built using Kotlin and Jetpack Compose. It allows users to create handwritten notes using their finger or stylus, recognizes handwriting using AI, and makes notes searchable by recognized text.
+SmartInk Journal is a handwriting-focused journaling app built using **Kotlin** and **Jetpack Compose**. It enables users to write notes using their finger or stylus, converts handwriting to text using **ML Kit**, and saves all data persistently with search and export features.
 
 ---
 
 ## ✅ Features
 
-- ✍️ **Handwriting Input**: Draw with finger or stylus on a custom canvas.
-- 🔁 **Undo/Redo**: Modify strokes easily.
-- 🧹 **Stroke Smoothing**: Cleans up jittery handwriting.
-- 🤖 **Handwriting Recognition**: Uses ML Kit Digital Ink to convert handwriting to text.
-- 💾 **Persistent Storage**: Notes saved as JSON with raw strokes, recognized text, and timestamp.
-- 🕑 **Note History**: View past notes with thumbnails and search recognized text.
-- 📄 **Export to PDF**: Save notes (ink + text) as downloadable PDFs.
+- ✍️ **Handwriting Input**: Draw on a smooth canvas using finger or stylus.
+- 🔁 **Undo/Redo**: Supports inking history.
+- 🧼 **Stroke Smoothing**: Removes jitter and cleans handwriting lines.
+- 🤖 **Handwriting Recognition**: ML Kit (Digital Ink) recognizes ink and shows text.
+- 🕵️ **Searchable Notes**: Search through recognized text.
+- 🖼️ **Thumbnails**: Preview ink strokes visually in notes list.
+- 💾 **Persistent Storage**: Notes stored as JSON with metadata.
+- 📄 **Export to PDF**: Generate downloadable PDF with ink and recognized text.
 
 ---
 
 ## 🧠 App Architecture
 
-This app follows a Clean Architecture + MVVM pattern:
+SmartInk Journal follows **Clean Architecture + MVVM** with **Hilt DI**:
 
 ```
 com.example.smartinkjournal
 │
 ├── data/
-│   ├── model/        → Data models (Note, Stroke, PointFWithTime)
-│   ├── repository/   → NoteRepository (abstracts persistence)
-│   └── storage/      → FileStorage (JSON-based storage)
+│   ├── model/        → Note, Stroke, PointFWithTime
+│   ├── repository/   → NoteRepository (logic wrapper)
+│   └── storage/      → FileStorage (JSON save/load)
 │
 ├── domain/
-│   └── usecase/      → Business logic (SaveNote, LoadNotes, RecognizeText)
+│   └── usecase/      → SaveNote, LoadNotes, RecognizeText
 │
 ├── presentation/
-│   ├── canvas/       → Drawing canvas UI + ViewModel
-│   ├── notes/        → Notes list UI + ViewModel
-│   └── MainActivity  → Composable navigation + layout
+│   ├── canvas/       → Canvas UI, toggle, handwriting
+│   ├── notes/        → Notes screen, filtering
+│   └── MainActivity  → App bar, navigation, PDF logic
 │
-└── utils/            → Helpers: smoothing, bitmap creation, PDF export
+└── utils/            → InkConverter, smoothStroke, PDFExporter, BitmapUtils
 ```
 
 ---
 
-## 🧾 Stroke Data Format
+## ✍️ Stroke Data Format
 
-Notes are saved as JSON files storing structured stroke data like this:
+Each note is saved as a JSON file that includes strokes, text, and metadata.
 
 ```json
 {
-  "id": "d4f29...",
+  "id": "d4f29a...",
   "timestamp": 1689008123,
   "recognizedText": "Hello world",
   "strokes": [
@@ -61,82 +62,169 @@ Notes are saved as JSON files storing structured stroke data like this:
 }
 ```
 
-This allows full note reconstruction, search indexing, and ML inference.
+This enables:
+- ✅ Accurate replay of handwriting
+- ✅ AI inference
+- ✅ Text search
 
 ---
 
-## ✨ Handwriting Recognition (ML Kit)
+## 🤖 How Handwriting Recognition is Implemented
 
-SmartInk Journal uses **ML Kit's Digital Ink Recognition**:
+### 1. Ink Format Conversion
 
-1. **Ink Conversion**  
-   `List<Stroke>` is converted to `Ink` using `InkConverter`.
+The app uses `ML Kit Digital Ink Recognition` for converting strokes into readable text.
 
-2. **Model Setup**  
-   English model (`en-US`) is downloaded at launch using `RemoteModelManager`.
+- The raw `List<Stroke>` from the canvas is converted into ML Kit’s `Ink` format via a utility class:
 
-3. **Text Recognition**  
-   Using `DigitalInkRecognizer.recognize(ink)` the top result is extracted.
+```kotlin
+val inkBuilder = Ink.Builder()
+for (stroke in strokes) {
+    val strokeBuilder = Ink.Stroke.builder()
+    stroke.points.forEach {
+        strokeBuilder.addPoint(Ink.Point.create(it.x, it.y, it.timestamp))
+    }
+    inkBuilder.addStroke(strokeBuilder.build())
+}
+```
 
-4. **Error Handling**  
-   Recognition is skipped if the model isn't ready or fails.
+---
+
+### 2. Model Download & Management
+
+- On app launch, the `en-US` handwriting model is downloaded using:
+
+```kotlin
+val model = DigitalInkRecognitionModel.builder(identifier).build()
+RemoteModelManager.getInstance().download(model, conditions).await()
+```
+
+- The app checks if the model is ready. Until then, UI shows:
+> "Converting to text..."
+
+---
+
+### 3. Recognition Flow
+
+- Once the user toggles the switch or saves a note, the app calls:
+
+```kotlin
+val result = recognizer.recognize(ink).await()
+val text = result.candidates.firstOrNull()?.text ?: ""
+```
+
+- The recognized text is stored in the `Note` model and also shown live when toggled.
+
+---
+
+### 4. Bitmap Use (for Export and Preview)
+
+While recognition is handled via vector `Ink`, Bitmaps are used in:
+
+#### a. PDF Export
+
+- A blank `Bitmap` is created via:
+
+```kotlin
+val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+```
+
+- Then a `Canvas` is drawn using strokes to paint the handwriting:
+
+```kotlin
+canvas.drawPath(path, paint)
+```
+
+- This bitmap is embedded into the PDF output.
+
+#### b. Thumbnail Previews
+
+- In the Notes list, strokes are drawn on a scaled-down `Canvas` using Jetpack Compose for quick visual feedback.
+
+---
+
+## ⚠️ Error Handling
+
+The app gracefully handles:
+
+- **Model not downloaded** → Displays `"Converting to text..."` until ready.
+- **Empty strokes** → Skips recognition or export.
+- **No match recognized** → Displays `"(No recognized text)"`.
+- **IO/PDF Failures** → Catches exceptions and notifies user.
 
 ---
 
 ## 🖨️ PDF Export
 
-When exporting a note:
-- The recognized text and timestamp are printed on the top.
-- The strokes are scaled and drawn in vector form.
-- The PDF is saved to:
+Each exported note PDF includes:
 
+- 📝 Recognized text
+- 🗓️ Timestamp
+- ✒️ Ink drawing rendered from strokes
+
+### Output Path:
 ```
-storage/emulated/0/Download/Note_YYYYMMDD_HHMMSS.pdf
+/storage/emulated/0/Download/Note_YYYYMMDD_HHMMSS.pdf
 ```
 
-You will need file access permission to access the file from outside the app.
+✅ Compatible with Android 8+
 
 ---
 
-## 🛠️ Setup Instructions
+## 📱 Demo
 
-1. **Clone the repo:**
+Actual Mobile Demo - 
+
+https://github.com/user-attachments/assets/ad4c1cb8-84df-4b5a-bec4-d6d1e0a205bb
+
+Emulator Demo - 
+
+https://github.com/user-attachments/assets/899889a4-fc5b-4aa7-bf7f-067b6926e2ee
+
+---
+
+## 🛠️ Setup
+
+1. **Clone the repo**
 
 ```bash
-git clone https://github.com/yourusername/smartinkjournal.git
+git clone https://github.com/YOUR_USERNAME/smartinkjournal.git
 ```
 
 2. **Open in Android Studio**  
-   Make sure you have Kotlin + Compose support enabled.
+   Requires Kotlin 1.8+ and Jetpack Compose support.
 
-3. **Run the app**  
-   Test on a real device or emulator (Android 8.0+ recommended).
+3. **Run on Emulator or Device**
 
 ---
 
-## 🛡️ Permissions
+## 🔐 Permissions
 
-Required for PDF export:
+Add this to `AndroidManifest.xml` for PDF export:
 
 ```xml
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 ```
 
-(For Android 10+, also handle scoped storage or request `MANAGE_EXTERNAL_STORAGE`)
+> ⚠️ For Android 11+, handle scoped storage via `MANAGE_EXTERNAL_STORAGE` or MediaStore.
 
 ---
 
-## 📁 Deliverables Checklist
+## ✅ Deliverables Summary
 
-- ✅ Source code in Kotlin
-- ✅ Custom Canvas for inking
-- ✅ AI-powered recognition via ML Kit
-- ✅ Persistent JSON-based stroke storage
-- ✅ Undo/Redo
-- ✅ Searchable note history
-- ✅ Thumbnail preview
-- ✅ Export to PDF
-- ✅ Clean MVVM architecture using Hilt DI
+- [x] Kotlin-based drawing canvas
+- [x] Undo/Redo logic
+- [x] Handwriting recognition (ML Kit)
+- [x] Toggle handwriting ↔ text
+- [x] Search recognized notes
+- [x] JSON stroke storage
+- [x] PDF export
+- [x] MVVM + Clean Architecture
+- [x] Hilt dependency injection
 
 ---
+
+## 📄 License
+
+MIT License © Swatej
